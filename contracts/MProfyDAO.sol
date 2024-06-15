@@ -150,13 +150,11 @@ contract MProfyDAO{
         return  true;
     }
 
-
     function voteByComplianer(uint _propID,bool _supports) public  OnlyComplianer returns (bool _success ){
         Proposal storage p = proposals[_propID];
-        require(p.pStatus == ProposalStatus.PENDING);
+        require(p.pStatus == ProposalStatus.PENDING);        
         complianerVotes[p.PID][msg.sender] = _supports;
         _success = true;
-
         //check voted by all compliners
         if(_supports && isProposalAgreed(p.PID)){
             p.pStatus = ProposalStatus.LIVE;
@@ -184,7 +182,7 @@ contract MProfyDAO{
         require(p.yVotes == complianers.length && isComplianer(msg.sender),"All Complianers need to agree for complaince");       
         }
 
-        bool criteria = (percentile >= p.minPercent) && (p.yVotes >= p.minVotes);
+        bool criteria = (percentile >= p.minPercent) && (p.yVotes >= p.minVotes) ;
 
         if(!criteria){
             p.pStatus = ProposalStatus.FAILED;
@@ -235,10 +233,11 @@ contract MProfyDAO{
         return  votes;
     }
 
-
     function voteByUser(uint _propID,bool _supports)public  returns  (bool){
      Proposal storage p = proposals[_propID];
+     require(voterVotes[_propID][msg.sender]==0,"user already voted");
         require(p.pStatus == ProposalStatus.LIVE);
+        require((block.timestamp >= p.vote_start) &&(block.timestamp <= p.vote_end),"voting closed");
         uint votes = getVotingPower(msg.sender);
         if(p.ptype == ProposalType.OPEN){
               require(deedToken.balanceOf(msg.sender) > 0);  
@@ -296,6 +295,8 @@ contract MProfyDAO{
 
 
    function withdrawVote(uint _propID)public  returns  (bool){
+     require(voterVotes[_propID][msg.sender]!=0,"user not voted");
+
      Proposal storage p = proposals[_propID];
         uint votes = uint256(voterVotes[_propID][msg.sender]);
         require(p.pStatus == ProposalStatus.LIVE && votes!=0);

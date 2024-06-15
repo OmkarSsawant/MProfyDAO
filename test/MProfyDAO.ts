@@ -26,5 +26,50 @@ describe("MProfyDAO", function () {
   }
 
   describe("Testing", function () {
+
+    const { mprofydao,owner,dto,to,tadto,no,c1,c2,c3,c4,c5,u1,u2 } =  await loadFixture(deployOneYearLockFixture);
+    describe("Proposal",async()=>{
+      it("creates  a proposal ",async()=>{
+        await mprofydao.createProposal("title","description",0,0,0,"","","");
+      expect(await mprofydao.numProposals()).to.above(0);
+      })
+
+    })
+
+    describe("Proposal Approval[Compliance vote]",()=>{
+      it("only complianers can vote",async()=>{
+        expect( await mprofydao.voteByComplianer(0,true)).to.Throw();
+      })  
+      
+      it("not live until all vote",async()=>{
+         mprofydao.connect(c1);
+          await mprofydao.voteByComplianer(0,true);
+          expect(await mprofydao.getProposalStatus(0)).to.equal(0);
+        })
+        
+        //FIX:one voter can vote multiple times prevent it
+        it("live on all votes",()=>{
+          [c2,c3,c4,c5].forEach(async c => {
+            mprofydao.connect(c);
+            await   mprofydao.voteByComplianer(0,true);
+            if(c== c5){
+              //last index
+          expect(await mprofydao.getProposalStatus(0)).to.equal(1);
+            }
+          });
+        })
+
+        it("one voter can vote only once",()=>{
+          
+        })
+    })
+
+    describe("Proposal Voting",()=>{
+
+    })
+
+    describe("Proposal Execution",()=>{
+
+    })
   });
 });
