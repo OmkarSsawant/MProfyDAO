@@ -270,6 +270,7 @@ contract MProfyDAO{
    function withdrawVote(uint _propID,bool _supports)public  returns  (bool){
      Proposal storage p = proposals[_propID];
         require(p.pStatus == ProposalStatus.LIVE);
+        //TODO: to check if it has a vote in contract
         uint votes = Math.max(1,deedToken.balanceOf(msg.sender));
         if(treasureToken.balanceOf(msg.sender) > 0){
            votes *= SafeMath.div(treasureToken.balanceOf(msg.sender),10);
