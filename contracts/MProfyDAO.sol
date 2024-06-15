@@ -78,6 +78,8 @@ contract MProfyDAO{
         complianers = _complianers;
     }
 
+    address[] private treasureMngQueue ;
+
 
     modifier OnlyComplianer{
         require(isComplianer(msg.sender));
@@ -111,6 +113,7 @@ contract MProfyDAO{
         uint amount)
          external payable    {
             Proposal memory p ;
+            p.creator = msg.sender;
             p.mail = _mail;
             p.title = _title;
             p.description = _description;
@@ -175,6 +178,8 @@ contract MProfyDAO{
                 p.pStatus = ProposalStatus.FAILED;
                 emit ProposalTallied(p.PID, false);
 
+            }else{
+                complianers.push(p.creator);
             }
         require(p.yVotes == complianers.length && isComplianer(msg.sender),"All Complianers need to agree for complaince");       
         }
@@ -183,8 +188,7 @@ contract MProfyDAO{
 
         if(!criteria){
             p.pStatus = ProposalStatus.FAILED;
-    emit ProposalTallied(p.PID, false);
-
+            emit ProposalTallied(p.PID, false);
         }
         
         require(percentile >= p.minPercent, "Min PercentVotes failed");
@@ -200,6 +204,12 @@ contract MProfyDAO{
             }
             require(sent,"Transaction Failed");            
         }
+
+        else if(p.ptype == ProposalType.TREASURY_MAN){
+            treasureMngQueue.push(p.creator);
+        }
+
+
         p.pStatus = ProposalStatus.COMPLETED;
     emit ProposalTallied(p.PID, true);
 
@@ -330,7 +340,14 @@ contract MProfyDAO{
         proposals[pId].pStatus = ProposalStatus.DELETED;
     }
 
-
+    //only for Treasury Contract once use
+    function getTreasuryManagerQueue() internal returns (address[] memory) {
+        address[] memory tmq = treasureMngQueue;
+        for (uint i = 0; i < treasureMngQueue.length; i++) {
+            delete treasureMngQueue[i];
+        }
+        return tmq;
+    }
    
 
     function setTopTreasuryHolders(address[] memory _tth) external {
