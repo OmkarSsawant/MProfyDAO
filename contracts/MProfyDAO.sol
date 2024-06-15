@@ -54,7 +54,8 @@ contract MProfyDAO{
 
     mapping  (uint=>mapping (address=>bool)) complianerVotes;
 
-
+//should this be cleared after voting is completed or has any usecase
+    mapping  (uint=>mapping (address=>int)) voterVotes;
 
     event ProposalAdded(
         uint indexed proposalID,
@@ -233,48 +234,62 @@ contract MProfyDAO{
               require(deedToken.balanceOf(msg.sender) > 0);  
          if(_supports){
                 p.yVotes+=votes;
+                voterVotes[_propID][msg.sender] = int256(votes);
             }else{
                 p.nVotes+=votes;
+                voterVotes[_propID][msg.sender] = -int256(votes);
+
             }
         }
         else if(p.ptype == ProposalType.TREASURY){
               require(treasureToken.balanceOf(msg.sender) > 0);
                if(_supports){
                 p.yVotes+=votes;
+                voterVotes[_propID][msg.sender] = int256(votes);
+
             }else{
                 p.nVotes+=votes;
+                voterVotes[_propID][msg.sender] = -int256(votes);
+
             }  
         }
         else if(p.ptype == ProposalType.COMPLIANCE && isComplianer(msg.sender)){
             if(_supports){
                 p.yVotes+=1;
+                voterVotes[_propID][msg.sender] = 1;
+
             }else{
                 p.nVotes+=1;
+                voterVotes[_propID][msg.sender] = -1;
+
             }
         }
         else if(p.ptype == ProposalType.TREASURY_MAN && isTopTreasurer(msg.sender)){
             if(_supports){
                             p.yVotes+=SafeMath.div(treasureToken.balanceOf(msg.sender),10);
+                voterVotes[_propID][msg.sender] = int256(votes);
+                      
                         }else{
                             p.nVotes+=SafeMath.div(treasureToken.balanceOf(msg.sender),10);
+                voterVotes[_propID][msg.sender] = -int256(votes);
+                      
                         }  
         }
+
        
     emit Voted(p.PID,false, msg.sender);
 
         return  true;
     }
 
+   
 
-   //do user need to have token when withdrawing vote?
-   function withdrawVote(uint _propID,bool _supports)public  returns  (bool){
+
+   function withdrawVote(uint _propID)public  returns  (bool){
      Proposal storage p = proposals[_propID];
-        require(p.pStatus == ProposalStatus.LIVE);
-        //TODO: to check if it has a vote in contract
-        uint votes = Math.max(1,deedToken.balanceOf(msg.sender));
-        if(treasureToken.balanceOf(msg.sender) > 0){
-           votes *= SafeMath.div(treasureToken.balanceOf(msg.sender),10);
-        }
+        uint votes = uint256(voterVotes[_propID][msg.sender]);
+        require(p.pStatus == ProposalStatus.LIVE && votes!=0);
+        bool _supports = votes > 0 ;
         if(p.ptype == ProposalType.OPEN){
               require(deedToken.balanceOf(msg.sender) > 0);  
          if(_supports){
