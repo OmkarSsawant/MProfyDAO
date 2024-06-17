@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 
 pragma solidity >=0.7.0 <0.9.0;
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -41,21 +40,23 @@ contract MProfyDAO{
 
 //"t1","d1",0,0,0,"","","",0
 
+    using Math for uint256;
+
     Proposal[] private  proposals;
-    Proposal[] private  complianceProposals;
+    // Proposal[] private  complianceProposals;
 
     address[] private topTreasuryHolders; 
 
 
     uint private pendingProposals;
 
-    mapping (address=> uint[]) uProposals;  
+    mapping (address=> uint[]) private uProposals;  
 
 
-    mapping  (uint=>mapping (address=>bool)) complianerVotes;
+    mapping  (uint=>mapping (address=>bool)) private complianerVotes;
 
-//should this be cleared after voting is completed or has any usecase
-    mapping  (uint=>mapping (address=>int)) voterVotes;
+//should this be cleared after voting is completed or has any usecase ?
+    mapping  (uint=>mapping (address=>int)) private voterVotes;
 
     event ProposalAdded(
         uint indexed proposalID,
@@ -70,7 +71,9 @@ contract MProfyDAO{
 
     IERC20 private deedToken;
     IERC20 private treasureToken;
-    address[] complianers;
+    address[] private complianers;
+
+    
 
     constructor(IERC20 _dToken,IERC20 _tToken,address[] memory _complianers){
         deedToken = _dToken;
@@ -80,14 +83,8 @@ contract MProfyDAO{
 
     address[] private treasureMngQueue ;
 
-
-    modifier OnlyComplianer{
-        require(isComplianer(msg.sender));
-        _;
-    }
-
-
-    function isComplianer(address s) internal view returns (bool){
+//only for test public
+  function isComplianer(address s) public view returns (bool){
          bool _isComplianer=false;
         for (uint i=0; i < complianers.length; i++) 
         {
@@ -99,6 +96,14 @@ contract MProfyDAO{
         }
         return  _isComplianer;
     }
+
+    modifier OnlyComplianer{
+        require(isComplianer(msg.sender));
+        _;
+    }
+
+    
+  
 
     function createProposal(
         // address  _creator,
@@ -132,9 +137,9 @@ contract MProfyDAO{
             proposals.push(p);
             pendingProposals++;
             uProposals[msg.sender].push(p.PID);
-            if(p.ptype==ProposalType.COMPLIANCE){
-                complianceProposals.push(p);
-            }
+            // if(p.ptype==ProposalType.COMPLIANCE){
+            //     complianceProposals.push(p);
+            // }
            
     }
 
@@ -167,8 +172,9 @@ contract MProfyDAO{
  
     function executeProposal(uint _pId)external   {
         Proposal storage p = proposals[_pId];
-        uint totalVotes = SafeMath.add(p.yVotes,p.nVotes);
-        uint percentile = SafeMath.mul(SafeMath.div(p.yVotes,totalVotes),100);
+        (,uint totalVotes) = p.yVotes.tryAdd(p.nVotes);
+        (,uint ratio) = p.yVotes.tryDiv(totalVotes);
+        (,uint percentile) = uint256(100).tryMul(ratio);
         
         if(p.ptype==ProposalType.COMPLIANCE){
             bool compliant = p.yVotes == complianers.length && isComplianer(msg.sender);
@@ -228,7 +234,8 @@ contract MProfyDAO{
   function getVotingPower(address s)public   view  returns  (uint){
         uint votes = Math.max(1,deedToken.balanceOf(s));
         if(treasureToken.balanceOf(s) > 0){
-           votes *= SafeMath.div(treasureToken.balanceOf(s),10);
+            (,uint r) = treasureToken.balanceOf(s).tryDiv(10);
+           votes *= r;
         }
         return  votes;
     }
@@ -236,11 +243,11 @@ contract MProfyDAO{
     function voteByUser(uint _propID,bool _supports)public  returns  (bool){
      Proposal storage p = proposals[_propID];
      require(voterVotes[_propID][msg.sender]==0,"user already voted");
-        require(p.pStatus == ProposalStatus.LIVE);
-        require((block.timestamp >= p.vote_start) &&(block.timestamp <= p.vote_end),"voting closed");
+        require(p.pStatus == ProposalStatus.LIVE,"status not live");
+      //  require((block.timestamp >= p.vote_start) &&(block.timestamp <= p.vote_end),"voting closed");
         uint votes = getVotingPower(msg.sender);
         if(p.ptype == ProposalType.OPEN){
-              require(deedToken.balanceOf(msg.sender) > 0);  
+              require(deedToken.balanceOf(msg.sender) > 0,"Deed Tokens Required for Open Voting");  
          if(_supports){
                 p.yVotes+=votes;
                 voterVotes[_propID][msg.sender] = int256(votes);
@@ -251,7 +258,7 @@ contract MProfyDAO{
             }
         }
         else if(p.ptype == ProposalType.TREASURY){
-              require(treasureToken.balanceOf(msg.sender) > 0);
+              require(treasureToken.balanceOf(msg.sender) > 0,"Treasure Token required for treasure voting");
                if(_supports){
                 p.yVotes+=votes;
                 voterVotes[_propID][msg.sender] = int256(votes);
@@ -274,12 +281,14 @@ contract MProfyDAO{
             }
         }
         else if(p.ptype == ProposalType.TREASURY_MAN && isTopTreasurer(msg.sender)){
+            (,uint r) = treasureToken.balanceOf(msg.sender).tryDiv(10);
             if(_supports){
-                            p.yVotes+=SafeMath.div(treasureToken.balanceOf(msg.sender),10);
+
+                            p.yVotes+=r;
                 voterVotes[_propID][msg.sender] = int256(votes);
                       
                         }else{
-                            p.nVotes+=SafeMath.div(treasureToken.balanceOf(msg.sender),10);
+                            p.nVotes+=r;
                 voterVotes[_propID][msg.sender] = -int256(votes);
                       
                         }  
@@ -325,10 +334,12 @@ contract MProfyDAO{
             }
         }
         else if(p.ptype == ProposalType.TREASURY_MAN && isTopTreasurer(msg.sender)){
+            (,uint r) = treasureToken.balanceOf(msg.sender).tryDiv(10);
+           
             if(_supports){
-                            p.yVotes-=SafeMath.div(treasureToken.balanceOf(msg.sender),10);
+                            p.yVotes-=r;
                         }else{
-                            p.nVotes-=SafeMath.div(treasureToken.balanceOf(msg.sender),10);
+                            p.nVotes-=r;
                         }  
         }
        
@@ -349,13 +360,17 @@ contract MProfyDAO{
         }
         return tmq;
     }
+
+     function getTreasuryManagerQ() public view returns (address[] memory) {
+            return treasureMngQueue;
+     }
    
 
     function setTopTreasuryHolders(address[] memory _tth) external {
         topTreasuryHolders = _tth; 
     }
 
-    function getProposalInfo(uint pID) public view returns (Proposal memory){
+    function getProposal(uint pID) public view returns (Proposal memory){
         return  proposals[pID];
     }
 
@@ -403,6 +418,12 @@ contract MProfyDAO{
         }
         return penProps;
     }
+
+    function getComplianers() public view returns (address[] memory){
+        return complianers;
+    }
+
+    
 
 
 }
