@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 //dt = 0xfAF646893C6D3Ef849FadD67FC1Ca3e347f409B7
 //tt = 0xBF77293F2166B6Dd5292325Dd76D0d0fC14996F0
-//complianers = ["0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB","0x5c6B0f7Bf3E7ce046039Bd8FABdfD3f9F5021678","0x617F2E2fD72FD9D5503197092aC168c91465E7f2","0x17F6AD8Ef982297579C203069C1DbfFE4348c372","0x03C6FcED478cBbC9a4FAB34eF9f40767739D1Ff7"]
+//complianceMembers = ["0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB","0x5c6B0f7Bf3E7ce046039Bd8FABdfD3f9F5021678","0x617F2E2fD72FD9D5503197092aC168c91465E7f2","0x17F6AD8Ef982297579C203069C1DbfFE4348c372","0x03C6FcED478cBbC9a4FAB34eF9f40767739D1Ff7"]
 
 contract MProfyDAO{
 
@@ -71,14 +71,14 @@ contract MProfyDAO{
 
     IERC20 private deedToken;
     IERC20 private treasureToken;
-    address[] private complianers;
+    address[] private complianceMembers;
 
     
 
     constructor(IERC20 _dToken,IERC20 _tToken,address[] memory _complianers){
         deedToken = _dToken;
         treasureToken = _tToken;
-        complianers = _complianers;
+        complianceMembers = _complianers;
     }
 
     address[] private treasureMngQueue ;
@@ -86,9 +86,9 @@ contract MProfyDAO{
 //only for test public
   function isComplianer(address s) public view returns (bool){
          bool _isComplianer=false;
-        for (uint i=0; i < complianers.length; i++) 
+        for (uint i=0; i < complianceMembers.length; i++) 
         {
-            if(s == complianers[i])
+            if(s == complianceMembers[i])
                 {
                     _isComplianer = true;
                     break ;
@@ -146,9 +146,9 @@ contract MProfyDAO{
 
 
     function isProposalAgreed(uint _pId) internal view returns (bool){
-        for (uint i=0; i< complianers.length; i++) 
+        for (uint i=0; i< complianceMembers.length; i++) 
         {
-            if(!complianerVotes[_pId][complianers[i]]){
+            if(!complianerVotes[_pId][complianceMembers[i]]){
                 return  false;
             }   
         }
@@ -177,15 +177,15 @@ contract MProfyDAO{
         (,uint percentile) = uint256(100).tryMul(ratio);
         
         if(p.ptype==ProposalType.COMPLIANCE){
-            bool compliant = p.yVotes == complianers.length && isComplianer(msg.sender);
+            bool compliant = p.yVotes == complianceMembers.length && isComplianer(msg.sender);
             if(!compliant){
                 p.pStatus = ProposalStatus.FAILED;
                 emit ProposalTallied(p.PID, false);
 
             }else{
-                complianers.push(p.creator);
+                complianceMembers.push(p.creator);
             }
-        require(p.yVotes == complianers.length && isComplianer(msg.sender),"All Complianers need to agree for complaince");       
+        require(p.yVotes == complianceMembers.length && isComplianer(msg.sender),"All complianceMembers need to agree for complaince");       
         }
 
         bool criteria = (percentile >= p.minPercent) && (p.yVotes >= p.minVotes) ;
@@ -420,7 +420,7 @@ contract MProfyDAO{
     }
 
     function getComplianers() public view returns (address[] memory){
-        return complianers;
+        return complianceMembers;
     }
 
     
