@@ -4,13 +4,13 @@ pragma solidity >=0.7.0 <0.9.0;
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 //dt = 0xfAF646893C6D3Ef849FadD67FC1Ca3e347f409B7
 //tt = 0xBF77293F2166B6Dd5292325Dd76D0d0fC14996F0
 //complianceMembers = ["0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB","0x5c6B0f7Bf3E7ce046039Bd8FABdfD3f9F5021678","0x617F2E2fD72FD9D5503197092aC168c91465E7f2","0x17F6AD8Ef982297579C203069C1DbfFE4348c372","0x03C6FcED478cBbC9a4FAB34eF9f40767739D1Ff7"]
 
-contract MProfyDAO{
+contract MProfyDAO is ReentrancyGuard{
 
     
     enum ProposalType { OPEN,TREASURY,COMPLIANCE,TREASURY_MAN,FUNDING }
@@ -52,6 +52,7 @@ contract MProfyDAO{
 
     mapping (address=> uint[]) private uProposals;  
 
+    uint private constant PERCENT = 100;
 
     mapping  (uint=>mapping (address=>bool)) private complianerVotes;
 
@@ -76,6 +77,8 @@ contract MProfyDAO{
     
 
     constructor(IERC20 _dToken,IERC20 _tToken,address[] memory _complianers){
+        require(address(_dToken) != address(0) && address(_tToken) != address(0), "Invalid token address");
+
         deedToken = _dToken;
         treasureToken = _tToken;
         complianceMembers = _complianers;
@@ -118,6 +121,7 @@ contract MProfyDAO{
         uint amount)
          external payable    {
             Proposal memory p ;
+            p.PID = proposals.length;
             p.creator = msg.sender;
             p.mail = _mail;
             p.title = _title;
@@ -156,6 +160,7 @@ contract MProfyDAO{
     }
 
     function voteByComplianer(uint _propID,bool _supports) public  OnlyComplianer returns (bool _success ){
+        require(_propID < proposals.length,"Invalid ID");
         Proposal storage p = proposals[_propID];
         require(p.pStatus == ProposalStatus.PENDING);        
         complianerVotes[p.PID][msg.sender] = _supports;
@@ -170,11 +175,13 @@ contract MProfyDAO{
 
     
  
-    function executeProposal(uint _pId)external   {
+    function executeProposal(uint _pId)external nonReentrant  {
+        require(_pId < proposals.length,"Invalid ID");
+
         Proposal storage p = proposals[_pId];
         (,uint totalVotes) = p.yVotes.tryAdd(p.nVotes);
         (,uint ratio) = p.yVotes.tryDiv(totalVotes);
-        (,uint percentile) = uint256(100).tryMul(ratio);
+        (,uint percentile) = PERCENT.tryMul(ratio);
         
         if(p.ptype==ProposalType.COMPLIANCE){
             bool compliant = p.yVotes == complianceMembers.length && isComplianer(msg.sender);
@@ -241,6 +248,7 @@ contract MProfyDAO{
     }
 
     function voteByUser(uint _propID,bool _supports)public  returns  (bool){
+        require(_propID < proposals.length,"Invalid ID");
      Proposal storage p = proposals[_propID];
      require(voterVotes[_propID][msg.sender]==0,"user already voted");
         require(p.pStatus == ProposalStatus.LIVE,"status not live");
@@ -295,7 +303,7 @@ contract MProfyDAO{
         }
 
        
-    emit Voted(p.PID,false, msg.sender);
+    emit Voted(p.PID,_supports, msg.sender);
 
         return  true;
     }
@@ -305,6 +313,7 @@ contract MProfyDAO{
 
    function withdrawVote(uint _propID)public  returns  (bool){
      require(voterVotes[_propID][msg.sender]!=0,"user not voted");
+        require(_propID < proposals.length,"Invalid ID");
 
      Proposal storage p = proposals[_propID];
         uint votes = uint256(voterVotes[_propID][msg.sender]);
@@ -348,6 +357,8 @@ contract MProfyDAO{
     }
 
     function deleteProposal(uint pId) external  {
+        require(pId < proposals.length,"Invalid ID");
+        require(proposals[pId].creator == msg.sender,"invalid op");
         require(proposals[pId].pStatus == ProposalStatus.LIVE, "Not Live");
         proposals[pId].pStatus = ProposalStatus.DELETED;
     }
@@ -365,12 +376,17 @@ contract MProfyDAO{
             return treasureMngQueue;
      }
    
+    modifier onlyTreasuryContract {
+        require(msg.sender == 0xBF77293F2166B6Dd5292325Dd76D0d0fC14996F0);//TODO:real address
+        _;
+    }
 
-    function setTopTreasuryHolders(address[] memory _tth) external {
+    function setTopTreasuryHolders(address[] memory _tth) external onlyTreasuryContract{
         topTreasuryHolders = _tth; 
     }
 
     function getProposal(uint pID) public view returns (Proposal memory){
+        require(pID < proposals.length,"Invalid ID");
         return  proposals[pID];
     }
 
@@ -391,22 +407,27 @@ contract MProfyDAO{
 
 
     function getProposalYayVotes(uint _pid) external  view  returns  (uint){
+        require(_pid < proposals.length,"Invalid ID");
         return  proposals[_pid].yVotes;
     }
 
 
     function getProposalNayVotes(uint _pid) external view   returns  (uint){
+        require(_pid < proposals.length,"Invalid ID");
         return  proposals[_pid].nVotes;
     }
     function getProposalStatus(uint _pid) external view   returns  (ProposalStatus ){
+        require(_pid < proposals.length,"Invalid ID");
         return  proposals[_pid].pStatus;
     }
 
     function calculateVotes(uint _pid) external  view    returns  (uint){
+        require(_pid < proposals.length,"Invalid ID");
         return  proposals[_pid].yVotes + proposals[_pid].nVotes;
     }
     
     function getPendingProposals()  public OnlyComplianer view  returns (Proposal[] memory){
+        
         Proposal[] memory  penProps = new Proposal[](pendingProposals);
         uint ci=0;
         for (uint i=0; i<proposals.length; i++) 
