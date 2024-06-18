@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity >=0.7.0 <0.9.0;
+pragma solidity >=0.8.0 <0.9.0;
 import "@openzeppelin/contracts/utils/math/Math.sol";
-
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -66,7 +65,7 @@ contract MProfyDAO is ReentrancyGuard{
         string description
     );
 
-
+ event ProposalStatusChanged(uint indexed proposalID, ProposalStatus status);
     event Voted(uint indexed proposalID, bool position, address indexed voter);
     event ProposalTallied(uint indexed proposalID, bool result);
 
@@ -222,7 +221,7 @@ contract MProfyDAO is ReentrancyGuard{
 
 
         p.pStatus = ProposalStatus.COMPLETED;
-    emit ProposalTallied(p.PID, true);
+    emit ProposalStatusChanged(p.PID, ProposalStatus.COMPLETED);
 
     }
 
@@ -361,6 +360,7 @@ contract MProfyDAO is ReentrancyGuard{
         require(proposals[pId].creator == msg.sender,"invalid op");
         require(proposals[pId].pStatus == ProposalStatus.LIVE, "Not Live");
         proposals[pId].pStatus = ProposalStatus.DELETED;
+        emit ProposalStatusChanged(pId, ProposalStatus.DELETED);
     }
 
     //only for Treasury Contract once use
