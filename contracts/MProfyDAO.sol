@@ -11,11 +11,13 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract MProfyDAO is ReentrancyGuard{
 
-    
+    // Enumeration for different types of proposals
     enum ProposalType { OPEN,TREASURY,COMPLIANCE,TREASURY_MAN,FUNDING }
 
+    // Enumeration for different statuses of proposals
     enum ProposalStatus { PENDING,LIVE,COMPLETED,FAILED,DELETED }
 
+ // Structure representing a proposal
     struct Proposal{
         uint PID;
         address creator;
@@ -86,7 +88,7 @@ contract MProfyDAO is ReentrancyGuard{
     address[] private treasureMngQueue ;
 
 //only for test public
-  function isComplianer(address s) public view returns (bool){
+  function isComplianceMember(address s) public view returns (bool){
          bool _isComplianer=false;
         for (uint i=0; i < complianceMembers.length; i++) 
         {
@@ -99,13 +101,14 @@ contract MProfyDAO is ReentrancyGuard{
         return  _isComplianer;
     }
 
-    modifier OnlyComplianer{
-        require(isComplianer(msg.sender));
+      // Function to check if an address is a compliance member
+    modifier OnlyComplianceMember{
+        require(isComplianceMember(msg.sender));
         _;
     }
 
     
-  
+  // Function to create a new proposal
 
     function createProposal(
         // address  _creator,
@@ -148,17 +151,25 @@ contract MProfyDAO is ReentrancyGuard{
 
 
 
+// Function to check if a proposal is agreed by majority of compliance members
+//as per the 51% above criteria
     function isProposalAgreed(uint _pId) internal view returns (bool){
+        uint agreed=0;
         for (uint i=0; i< complianceMembers.length; i++) 
         {
-            if(!complianerVotes[_pId][complianceMembers[i]]){
-                return  false;
+            if(complianerVotes[_pId][complianceMembers[i]]){
+                agreed+=1;
             }   
         }
-        return  true;
+        if(agreed==0) return false;
+        (,uint r)  = agreed.tryMul(100);
+        (,uint p) = r.tryDiv(complianceMembers.length);
+        return  p>50;
     }
 
-    function voteByComplianer(uint _propID,bool _supports) public  OnlyComplianer returns (bool _success ){
+
+    // Function for compliance members to vote on a proposal
+    function voteByComplianer(uint _propID,bool _supports) public  OnlyComplianceMember returns (bool _success ){
         require(_propID < proposals.length,"Invalid ID");
         Proposal storage p = proposals[_propID];
         require(p.pStatus == ProposalStatus.PENDING);        
@@ -174,16 +185,17 @@ contract MProfyDAO is ReentrancyGuard{
 
     
  
+    // Function to execute a proposal
     function executeProposal(uint _pId)external nonReentrant  {
         require(_pId < proposals.length,"Invalid ID");
 
         Proposal storage p = proposals[_pId];
         (,uint totalVotes) = p.yVotes.tryAdd(p.nVotes);
-        (,uint ratio) = p.yVotes.tryDiv(totalVotes);
-        (,uint percentile) = PERCENT.tryMul(ratio);
+        (,uint ratio) = p.yVotes.tryMul(PERCENT);
+        (,uint percent) = totalVotes.tryDiv(ratio);
         
         if(p.ptype==ProposalType.COMPLIANCE){
-            bool compliant = p.yVotes == complianceMembers.length && isComplianer(msg.sender);
+            bool compliant = p.yVotes == complianceMembers.length && isComplianceMember(msg.sender);
             if(!compliant){
                 p.pStatus = ProposalStatus.FAILED;
                 emit ProposalTallied(p.PID, false);
@@ -191,17 +203,17 @@ contract MProfyDAO is ReentrancyGuard{
             }else{
                 complianceMembers.push(p.creator);
             }
-        require(p.yVotes == complianceMembers.length && isComplianer(msg.sender),"All complianceMembers need to agree for complaince");       
+        require(p.yVotes == complianceMembers.length && isComplianceMember(msg.sender),"All complianceMembers need to agree for complaince");       
         }
 
-        bool criteria = (percentile >= p.minPercent) && (p.yVotes >= p.minVotes) ;
+        bool criteria = (percent >= p.minPercent) && (p.yVotes >= p.minVotes) ;
 
         if(!criteria){
             p.pStatus = ProposalStatus.FAILED;
             emit ProposalTallied(p.PID, false);
         }
         
-        require(percentile >= p.minPercent, "Min PercentVotes failed");
+        require(percent >= p.minPercent, "Min PercentVotes failed");
         require(p.yVotes >= p.minVotes, "Min Votes failed"); 
 
         if(p.ptype == ProposalType.FUNDING){
@@ -226,6 +238,7 @@ contract MProfyDAO is ReentrancyGuard{
     }
 
 
+// Function to check if an address is a top treasury holder
     function isTopTreasurer(address sender)internal view  returns  (bool){
         for (uint i =0; i < topTreasuryHolders.length;i++) 
         {
@@ -237,6 +250,7 @@ contract MProfyDAO is ReentrancyGuard{
         return  false;
     }
 
+ // Function to get the voting power of an address
   function getVotingPower(address s)public   view  returns  (uint){
         uint votes = Math.max(1,deedToken.balanceOf(s));
         if(treasureToken.balanceOf(s) > 0){
@@ -246,12 +260,16 @@ contract MProfyDAO is ReentrancyGuard{
         return  votes;
     }
 
+
+    // Function for users to vote on a proposal
+    //For Every Type of proposal calculates the votes accordingly
+    //by making sure the voting is done in timeline
     function voteByUser(uint _propID,bool _supports)public  returns  (bool){
         require(_propID < proposals.length,"Invalid ID");
      Proposal storage p = proposals[_propID];
      require(voterVotes[_propID][msg.sender]==0,"user already voted");
         require(p.pStatus == ProposalStatus.LIVE,"status not live");
-      //  require((block.timestamp >= p.vote_start) &&(block.timestamp <= p.vote_end),"voting closed");
+        require((block.timestamp >= p.vote_start) &&(block.timestamp <= p.vote_end),"voting closed");
         uint votes = getVotingPower(msg.sender);
         if(p.ptype == ProposalType.OPEN){
               require(deedToken.balanceOf(msg.sender) > 0,"Deed Tokens Required for Open Voting");  
@@ -276,7 +294,7 @@ contract MProfyDAO is ReentrancyGuard{
 
             }  
         }
-        else if(p.ptype == ProposalType.COMPLIANCE && isComplianer(msg.sender)){
+        else if(p.ptype == ProposalType.COMPLIANCE && isComplianceMember(msg.sender)){
             if(_supports){
                 p.yVotes+=1;
                 voterVotes[_propID][msg.sender] = 1;
@@ -310,6 +328,7 @@ contract MProfyDAO is ReentrancyGuard{
    
 
 
+  // Function to withdraw a vote by a user
    function withdrawVote(uint _propID)public  returns  (bool){
      require(voterVotes[_propID][msg.sender]!=0,"user not voted");
         require(_propID < proposals.length,"Invalid ID");
@@ -334,7 +353,7 @@ contract MProfyDAO is ReentrancyGuard{
                 p.nVotes-=votes;
             }  
         }
-        else if(p.ptype == ProposalType.COMPLIANCE && isComplianer(msg.sender)){
+        else if(p.ptype == ProposalType.COMPLIANCE && isComplianceMember(msg.sender)){
             if(_supports){
                 p.yVotes-=1;
             }else{
@@ -355,6 +374,8 @@ contract MProfyDAO is ReentrancyGuard{
         return  true;
     }
 
+
+    // Function to delete a proposal
     function deleteProposal(uint pId) external  {
         require(pId < proposals.length,"Invalid ID");
         require(proposals[pId].creator == msg.sender,"invalid op");
@@ -372,29 +393,36 @@ contract MProfyDAO is ReentrancyGuard{
         return tmq;
     }
 
-     function getTreasuryManagerQ() public view returns (address[] memory) {
+
+    // Function to get the queue of treasury managers
+     function getTreasuryManagerQueue() public view returns (address[] memory) {
             return treasureMngQueue;
      }
    
+   // Modifier to restrict access to the treasury contract only
     modifier onlyTreasuryContract {
         require(msg.sender == 0xBF77293F2166B6Dd5292325Dd76D0d0fC14996F0);//TODO:real address
         _;
     }
 
+ // Function to set top treasury holders
     function setTopTreasuryHolders(address[] memory _tth) external onlyTreasuryContract{
         topTreasuryHolders = _tth; 
     }
 
+  // Function to get a specific proposal by ID
     function getProposal(uint pID) public view returns (Proposal memory){
         require(pID < proposals.length,"Invalid ID");
         return  proposals[pID];
     }
 
 
+  // Function to get the number of proposals
     function  numOfProposals() external view  returns  (uint){
         return  proposals.length;
     }
 
+   // Function to get proposals created by the caller
     function getCreatorProposals() external  view returns (Proposal[] memory){
             uint [] memory upids = uProposals[msg.sender];
             Proposal[] memory mps = new Proposal[](upids.length);
@@ -406,27 +434,33 @@ contract MProfyDAO is ReentrancyGuard{
     }
 
 
+
+    // Function to get the number of 'Yay' votes for a proposal
     function getProposalYayVotes(uint _pid) external  view  returns  (uint){
         require(_pid < proposals.length,"Invalid ID");
         return  proposals[_pid].yVotes;
     }
 
 
+// Function to get the number of 'Nay' votes for a proposal
     function getProposalNayVotes(uint _pid) external view   returns  (uint){
         require(_pid < proposals.length,"Invalid ID");
         return  proposals[_pid].nVotes;
     }
+        // Function to get the status of a proposal
     function getProposalStatus(uint _pid) external view   returns  (ProposalStatus ){
         require(_pid < proposals.length,"Invalid ID");
         return  proposals[_pid].pStatus;
     }
 
+    // Function to calculate the total votes for a proposal
     function calculateVotes(uint _pid) external  view    returns  (uint){
         require(_pid < proposals.length,"Invalid ID");
         return  proposals[_pid].yVotes + proposals[_pid].nVotes;
     }
     
-    function getPendingProposals()  public OnlyComplianer view  returns (Proposal[] memory){
+       // Function to get all pending proposals for compliance members
+    function getPendingProposals()  public OnlyComplianceMember view  returns (Proposal[] memory){
         
         Proposal[] memory  penProps = new Proposal[](pendingProposals);
         uint ci=0;
@@ -440,6 +474,8 @@ contract MProfyDAO is ReentrancyGuard{
         return penProps;
     }
 
+
+    // Function to get all compliance members
     function getComplianers() public view returns (address[] memory){
         return complianceMembers;
     }
